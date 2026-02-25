@@ -49,7 +49,7 @@ An advanced AI-powered application designed to holistically analyze skin and hai
    Create a `.env` or `.env.local` file in the root directory and add the following keys:
    ```env
    # Setup your primary Gemini API Key
-   GEMINI_API_KEY=your_primary_gemini_api_key
+   VITE_API_KEY=gemini_api_key OR GEMINI_API_KEY=your_primary_gemini_api_key
 
    # (Optional) For the backend, you can specify multiple comma-separated keys 
    # to act as a failover pool if rate limits are hit:
