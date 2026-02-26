@@ -149,7 +149,7 @@ const base64ToPart = (base64String, mimeType = 'image/jpeg') => {
 };
 
 // Health check endpoint for cron jobs (e.g., to prevent Render from sleeping)
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
     res.status(200).json({
         status: "success",
         message: "AI Server is awake and running!"
