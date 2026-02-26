@@ -1140,9 +1140,11 @@ app.use((req, res) => {
 });
 
 
+
 // Start Server
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`- GET /api/health`);
     console.log(`- POST /api/analyze-skin`);
     console.log(`- POST /api/analyze-hair`);
     console.log(`- POST /api/recommend-skin`);
@@ -1150,3 +1152,4 @@ app.listen(PORT, () => {
     console.log(`- POST /api/doctor-report`);
     console.log(`- POST /api/chat`);
 });
+
