@@ -1040,7 +1040,38 @@ const App: React.FC = () => {
 
                 const hairRecs = await getHairCareRoutine(hairProfile, skinAnalysisResult || [], []);
                 setMessages(prev => prev.filter(msg => msg.type !== MessageType.Loading));
-                addMessage(Sender.Bot, MessageType.ProductRecommendation, hairRecs);
+
+                if (hairRecs.length === 0) {
+                    addMessage(Sender.Bot, MessageType.Text, (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 my-2">
+                            <h3 className="text-red-700 font-bold flex items-center gap-2 mb-2">
+                                ⚠️ Medical Consultation Strongly Recommended
+                            </h3>
+                            <p className="text-sm text-red-600 mb-4 text-justify">
+                                Based on your assessment, over-the-counter cosmetic products will not be effective for this level of hair loss. We strongly recommend consulting a dermatologist or trichologist for proper medical treatments.
+                            </p>
+                            <a
+                                href="https://dermatics.in/pages/get-expert-skin-hair-advice-online-book-a-video-consultation-today"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block w-full text-center bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors shadow-sm"
+                            >
+                                Book a Doctor Consultation
+                            </a>
+                            <div className="space-y-3 pt-4 mt-4">
+                                <button onClick={() => addMessage(Sender.Bot, MessageType.ChatInput, null)} className="w-full px-4 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors text-base flex items-center justify-center gap-2">
+                                    <BotIcon /> Chat with AI Expert
+                                </button>
+                                <button onClick={() => generatePDF(skinAnalysisResult, hairRecs, conversationState.skinGoals, userInfo, uploadedImages[0]?.base64)} className="w-full px-4 py-3 bg-blue-50 text-blue-700 font-bold rounded-lg border-2 border-blue-200 hover:bg-blue-100 transition-colors text-base flex items-center justify-center gap-2">
+                                    <DownloadIcon /> Download Report (PDF)
+                                </button>
+                                <button onClick={() => handleNextStep(ConversationStep.Skin_Report)} className="w-full px-4 py-3 bg-gray-100 text-gray-800 font-bold rounded-lg hover:bg-gray-200 transition-colors text-base">Next: AI Doctor's Report</button>
+                            </div>
+                        </div>
+                    ));
+                } else {
+                    addMessage(Sender.Bot, MessageType.ProductRecommendation, hairRecs);
+                }
                 break;
             case ConversationStep.Skin_Report:
                 addMessage(Sender.User, MessageType.Text, "AI Doctor's Report");
