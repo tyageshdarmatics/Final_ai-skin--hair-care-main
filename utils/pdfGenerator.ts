@@ -260,12 +260,15 @@ export const generatePDF = (
                 </div>
             </div>
 
+            ${(analysis && analysis.length > 0) ? `
             <div class="section-title">${(analysis || []).some(cat => cat.category.toLowerCase().includes('hair') || cat.category.toLowerCase().includes('scalp')) ? 'AI Hair Analysis Findings' : 'AI Skin Analysis Findings'}</div>
             <div>
                 ${analysisHtml}
             </div>
+            ` : ''}
 
             <div class="section-title">Recommended Routine</div>
+            ${(recommendations && recommendations.length > 0) ? `
             <p style="font-size:13px; color:#4b5563; margin-bottom: 20px;">
                 Welcome to your personalized skincare journey! Based on your analysis, we’ve created a targeted routine designed to address your concerns effectively. Consistency and patience are key to visible results.
             </p>
@@ -287,6 +290,23 @@ export const generatePDF = (
     )}
                 </div>
             </div>
+            ` : `
+            <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <h3 style="color: #b91c1c; font-weight: bold; margin-top: 0; margin-bottom: 8px;">
+                    ⚠️ Medical Consultation Strongly Recommended
+                </h3>
+                <p style="color: #dc2626; font-size: 14px; margin-bottom: 16px; text-align: justify; line-height: 1.5;">
+                    Based on your assessment, over-the-counter cosmetic products will not be effective for this level of hair loss. We strongly recommend consulting a dermatologist or trichologist for proper medical treatments.
+                </p>
+                <a 
+                    href="https://dermatics.in/pages/get-expert-skin-hair-advice-online-book-a-video-consultation-today"
+                    target="_blank"
+                    style="display: block; width: 100%; text-align: center; background-color: #dc2626; color: white; font-weight: 600; padding: 12px 16px; border-radius: 8px; text-decoration: none; box-sizing: border-box;"
+                >
+                    Book a Doctor Consultation
+                </a>
+            </div>
+            `}
 
             <div class="section-title">Additional Advice</div>
             <div class="advice-container">
@@ -307,7 +327,7 @@ export const generatePDF = (
             </div>
 
             <div class="disclaimer">
-            This skincare routine is a personalized AI-based recommendation. Individual results may vary. Always perform a patch test before introducing new products. Consult a dermatologist if irritation or adverse reactions occur. This is not a substitute for professional medical advice.
+            This ${(analysis || []).some(cat => cat.category.toLowerCase().includes('hair') || cat.category.toLowerCase().includes('scalp')) ? 'haircare' : 'skincare'} routine is a personalized AI-based recommendation. Individual results may vary. Always perform a patch test before introducing new products. Consult a dermatologist if irritation or adverse reactions occur. This is not a substitute for professional medical advice.
             </div>
 
             <script>
