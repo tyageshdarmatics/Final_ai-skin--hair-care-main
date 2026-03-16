@@ -77,9 +77,17 @@ if (!SHOPIFY_DOMAIN || !ACCESS_TOKEN) {
 }
 
 let cachedProducts = null;
+let lastFetchTimestamp = 0;
+const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
 async function getAllProducts() {
-    if (cachedProducts) return cachedProducts;
+    const now = Date.now();
+    if (cachedProducts && (now - lastFetchTimestamp < CACHE_EXPIRY)) {
+        console.log("- INFO: Returning cached products (Backend)");
+        return cachedProducts;
+    }
+    
+    console.log("- INFO: Cache expired or missing, fetching fresh products from Shopify...");
     const allEdges = [];
     let hasNextPage = true;
     let endCursor = null;
@@ -131,6 +139,7 @@ async function getAllProducts() {
                 tags: node.tags || []
             };
         });
+        lastFetchTimestamp = Date.now();
         return cachedProducts;
     } catch (error) {
         console.error("Shopify Fetch Error:", error);
