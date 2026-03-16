@@ -17,10 +17,30 @@ const SHOPIFY_DOMAIN = 'dermatics-in.myshopify.com';
 const ACCESS_TOKEN = '8a3075ce39ed30c5d2f04ff9e1aa13ed';
 
 let cachedProducts: ProductData[] | null = null;
+const CACHE_KEY = "dermatics_products_cache";
+const TIMESTAMP_KEY = "dermatics_products_timestamp";
+const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function getAllProducts(): Promise<ProductData[]> {
-
   if (cachedProducts) return cachedProducts;
+
+  // Try loading from localStorage
+  try {
+    const localCache = localStorage.getItem(CACHE_KEY);
+    const localTimestamp = localStorage.getItem(TIMESTAMP_KEY);
+    const now = Date.now();
+
+    if (localCache && localTimestamp) {
+        const timestamp = parseInt(localTimestamp, 10);
+        if (now - timestamp < CACHE_EXPIRY) {
+            console.log("✅ Using 24h localStorage cache for products");
+            cachedProducts = JSON.parse(localCache);
+            return cachedProducts || [];
+        }
+    }
+  } catch (e) {
+    console.warn("Failed to read from localStorage cache", e);
+  }
 
   const allEdges: any[] = [];
   let hasNextPage = true;
@@ -120,6 +140,15 @@ export async function getAllProducts(): Promise<ProductData[]> {
     });
 
     console.log(`✅ Fetched total ${cachedProducts.length} products from Shopify`);
+    
+    // Save to localStorage
+    try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cachedProducts));
+        localStorage.setItem(TIMESTAMP_KEY, Date.now().toString());
+    } catch (e) {
+        console.warn("Failed to save to localStorage cache", e);
+    }
+
     return cachedProducts || [];
   } catch (error) {
     console.error("Failed to fetch products from Shopify:", error);
