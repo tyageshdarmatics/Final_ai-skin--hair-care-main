@@ -13,8 +13,13 @@ export interface ProductData {
   productType?: string;
 }
 
-const SHOPIFY_DOMAIN = 'dermatics-in.myshopify.com';
-const ACCESS_TOKEN = '8a3075ce39ed30c5d2f04ff9e1aa13ed';
+// Shopify Config
+const SHOPIFY_DOMAIN = process.env.SHOPIFY_DOMAIN;
+const ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+
+if (!SHOPIFY_DOMAIN || !ACCESS_TOKEN) {
+  console.warn("WARNING: SHOPIFY_DOMAIN or SHOPIFY_ACCESS_TOKEN is missing in environment variables. Product catalog will not work.");
+}
 
 let cachedProducts: ProductData[] | null = null;
 const CACHE_KEY = "dermatics_products_cache";
@@ -31,12 +36,12 @@ export async function getAllProducts(): Promise<ProductData[]> {
     const now = Date.now();
 
     if (localCache && localTimestamp) {
-        const timestamp = parseInt(localTimestamp, 10);
-        if (now - timestamp < CACHE_EXPIRY) {
-            console.log("✅ Using 24h localStorage cache for products");
-            cachedProducts = JSON.parse(localCache);
-            return cachedProducts || [];
-        }
+      const timestamp = parseInt(localTimestamp, 10);
+      if (now - timestamp < CACHE_EXPIRY) {
+        console.log("✅ Using 24h localStorage cache for products");
+        cachedProducts = JSON.parse(localCache);
+        return cachedProducts || [];
+      }
     }
   } catch (e) {
     console.warn("Failed to read from localStorage cache", e);
@@ -140,13 +145,13 @@ export async function getAllProducts(): Promise<ProductData[]> {
     });
 
     console.log(`✅ Fetched total ${cachedProducts.length} products from Shopify`);
-    
+
     // Save to localStorage
     try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cachedProducts));
-        localStorage.setItem(TIMESTAMP_KEY, Date.now().toString());
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cachedProducts));
+      localStorage.setItem(TIMESTAMP_KEY, Date.now().toString());
     } catch (e) {
-        console.warn("Failed to save to localStorage cache", e);
+      console.warn("Failed to save to localStorage cache", e);
     }
 
     return cachedProducts || [];
