@@ -15,7 +15,9 @@ export function shortlistProductsForGemini(catalog, context, maxItems = 40) {
     
     if (analysis && Array.isArray(analysis)) {
         analysis.forEach(cat => {
+            if (!cat.conditions || !Array.isArray(cat.conditions)) return;
             cat.conditions.forEach(cond => {
+                if (!cond.name) return;
                 cond.name.toLowerCase().split(/\s+/).forEach(word => word.length > 3 && terms.add(word));
             });
         });
@@ -27,8 +29,8 @@ export function shortlistProductsForGemini(catalog, context, maxItems = 40) {
     // 2. Score products based on keyword matches in name and tags
     const scored = catalog.map(p => {
         let score = 0;
-        const name = p.name.toLowerCase();
-        const tags = p.tags.join(' ').toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        const tags = (p.tags || []).join(' ').toLowerCase();
         
         termList.forEach(term => {
             if (name.includes(term)) score += 5;
