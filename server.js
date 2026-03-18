@@ -148,6 +148,29 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Debug endpoint: check catalog size and env vars
+app.get('/api/catalog-status', async (req, res) => {
+    try {
+        const all = await getCatalogFast('all');
+        const skin = await getCatalogFast('skin');
+        const hair = await getCatalogFast('hair');
+        res.json({
+            status: "ok",
+            catalog: {
+                total: all.length,
+                skin: skin.length,
+                hair: hair.length
+            },
+            env: {
+                hasGeminiKey: !!(process.env.GEMINI_API_KEY || process.env.VITE_API_KEY),
+                hasShopifyDomain: !!process.env.SHOPIFY_DOMAIN,
+                hasShopifyToken: !!process.env.SHOPIFY_ACCESS_TOKEN,
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 
 /**
