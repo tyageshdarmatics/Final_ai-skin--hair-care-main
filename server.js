@@ -41,7 +41,10 @@ app.use(express.json({ limit: '50mb' })); // Allow large base64 payloads
 const rawApiKeys = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_API_KEY;
 
 if (!rawApiKeys) {
-    console.error("CRITICAL ERROR: No API Key found in .env or environment variables.");
+    console.error("--- DEPLOYMENT ERROR ---");
+    console.error("Missing AI API Key!");
+    console.error("Please ensure GEMINI_API_KEY or VITE_API_KEY is set in your environment variables.");
+    console.log("Current Environment Variables Found:", Object.keys(process.env).filter(k => k.includes('KEY') || k.includes('TOKEN') || k.includes('DOMAIN')));
     process.exit(1);
 }
 
