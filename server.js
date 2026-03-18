@@ -14,6 +14,11 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
+// --- NEW SERVICE IMPORTS ---
+import { syncAllProductsFromShopify } from './services/shopifySyncService.js';
+import { buildPreparedCatalogs } from './services/catalogBuilder.js';
+import { saveCatalogsToCache, getCachedCatalog } from './services/catalogCacheService.js';
+import { shortlistProductsForGemini } from './services/productShortlistService.js';
 
 dotenv.config();
 
@@ -76,75 +81,50 @@ if (!SHOPIFY_DOMAIN || !ACCESS_TOKEN) {
     console.warn("WARNING: SHOPIFY_DOMAIN or SHOPIFY_ACCESS_TOKEN is missing in environment variables. Product catalog will not work.");
 }
 
-let cachedProducts = null;
-let lastFetchTimestamp = 0;
-const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+/**
+ * REFACTORED: Background Sync Logic
+ * This replaces the old live-fetching getAllProducts.
+ */
+let isSyncing = false;
 
-async function getAllProducts() {
-    const now = Date.now();
-    if (cachedProducts && (now - lastFetchTimestamp < CACHE_EXPIRY)) {
-        console.log("- INFO: Returning cached products (Backend)");
-        return cachedProducts;
-    }
-    
-    console.log("- INFO: Cache expired or missing, fetching fresh products from Shopify...");
-    const allEdges = [];
-    let hasNextPage = true;
-    let endCursor = null;
+async function refreshCatalogInBackground() {
+    if (isSyncing) return { status: "already_syncing" };
+    isSyncing = true;
+    console.log("- SYNC: Starting background refresh...");
 
     try {
-        while (hasNextPage) {
-            const query = `
-            {
-              products(first: 250${endCursor ? `, after: "${endCursor}"` : ''}) {
-                pageInfo { hasNextPage, endCursor }
-                edges {
-                  node {
-                    id, title, description, productType, handle, onlineStoreUrl,
-                    images(first: 1) { edges { node { url } } }
-                    variants(first: 1) { edges { node { id, price { amount, currencyCode }, compareAtPrice { amount, currencyCode } } } }
-                    tags
-                  }
-                }
-              }
-            }
-            `;
-            const response = await fetch(`https://${SHOPIFY_DOMAIN}/api/2024-01/graphql.json`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Shopify-Storefront-Access-Token': ACCESS_TOKEN,
-                },
-                body: JSON.stringify({ query }),
-            });
-            const json = await response.json();
-            const pageInfo = json.data?.products?.pageInfo || {};
-            const edges = json.data?.products?.edges || [];
-            allEdges.push(...edges);
-            hasNextPage = pageInfo.hasNextPage || false;
-            endCursor = pageInfo.endCursor || null;
-        }
-        cachedProducts = allEdges.map((edge) => {
-            const node = edge.node;
-            const price = node.variants.edges[0]?.node?.price;
-            const compareAtPrice = node.variants.edges[0]?.node?.compareAtPrice;
-            return {
-                productId: node.id,
-                name: node.title,
-                url: node.onlineStoreUrl || `https://${SHOPIFY_DOMAIN}/products/${node.handle}`,
-                imageUrl: node.images.edges[0]?.node?.url || 'https://placehold.co/200x200?text=No+Image',
-                variantId: node.variants.edges[0]?.node?.id,
-                price: price ? `${price.currencyCode} ${parseFloat(price.amount).toFixed(2)}` : 'N/A',
-                compareAtPrice: compareAtPrice ? `${compareAtPrice.currencyCode} ${parseFloat(compareAtPrice.amount).toFixed(2)}` : 'N/A',
-                tags: node.tags || []
-            };
-        });
-        lastFetchTimestamp = Date.now();
-        return cachedProducts;
+        const rawProducts = await syncAllProductsFromShopify(SHOPIFY_DOMAIN, ACCESS_TOKEN);
+        const catalogs = buildPreparedCatalogs(rawProducts);
+        await saveCatalogsToCache(catalogs);
+
+        console.log(`- SYNC SUCCESS: ${rawProducts.length} total products synced.`);
+        isSyncing = false;
+        return { status: "success", count: rawProducts.length };
     } catch (error) {
-        console.error("Shopify Fetch Error:", error);
-        return [];
+        console.error("- SYNC FAILED:", error.message);
+        isSyncing = false;
+        throw error;
     }
+}
+
+/**
+ * Fast helper for endpoints.
+ * First try shared cache, fallback to sync if empty.
+ */
+async function getCatalogFast(type = 'all') {
+    let catalog = await getCachedCatalog(type);
+
+    if (!catalog) {
+        console.log(`- CACHE MISS: ${type} catalog not found. Triggering emergency sync...`);
+        try {
+            await refreshCatalogInBackground();
+            catalog = await getCachedCatalog(type);
+        } catch (e) {
+            console.error("- EMERGENCY SYNC FAILED:", e.message);
+        }
+    }
+
+    return catalog || [];
 }
 
 // Helper: Convert Base64 to Gemini Part
@@ -163,6 +143,37 @@ app.get('/api/health', (req, res) => {
         status: "success",
         message: "AI Server is awake and running!"
     });
+});
+
+
+
+/**
+ * REFACTORED: Manual Refresh Endpoint
+ */
+app.post('/api/refresh-shopify-catalog', async (req, res) => {
+    const secret = req.headers['x-refresh-secret'];
+    const INTERNAL_SECRET = process.env.INTERNAL_REFRESH_SECRET || 'sync-secret-123';
+
+    if (secret !== INTERNAL_SECRET) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const result = await refreshCatalogInBackground();
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * REFACTORED: Shopify Webhook Skeleton
+ */
+app.post('/api/webhooks/shopify', (req, res) => {
+    console.log("- WEBHOOK: Received product update. Triggering background sync...");
+    // Ideally verify Hmac here
+    refreshCatalogInBackground().catch(e => console.error("- WEBHOOK SYNC ERR:", e.message));
+    res.status(200).send('OK');
 });
 
 
@@ -411,17 +422,17 @@ app.post('/api/analyze-hair', async (req, res) => {
 app.post('/api/recommend-skin', async (req, res) => {
     try {
         const { analysis, goals } = req.body;
-        const allProducts = await getAllProducts();
 
-        const skincareCatalog = allProducts.filter(p => {
-            const lowerName = p.name.toLowerCase();
-            return !['shampoo', 'conditioner', 'scalp', 'minoxidil', 'follihair', 'mintop', 'anaboom'].some(term => lowerName.includes(term));
-        });
+        // REFACTORED: Use fast cached skin catalog
+        const skinCatalog = await getCatalogFast('skin');
+
+        // REFACTORED: Shortlist catalog before sending to Gemini (AI Optimization)
+        const shortlisted = shortlistProductsForGemini(skinCatalog, { analysis, goals }, 30);
+        console.log(`- INFO: Using ${shortlisted.length} shortlisted skin products for AI.`);
 
         const analysisString = JSON.stringify(analysis);
-        // const goalsString = goals.join(', '); // old updated on 19-02-2026
-        const goalsString = (goals || []).join(", "); // new updated on 19-02-2026
-        const productCatalogString = JSON.stringify(skincareCatalog.map(p => ({ id: p.variantId, name: p.name })));
+        const goalsString = (goals || []).join(", ");
+        const productCatalogString = JSON.stringify(shortlisted.map(p => ({ id: p.variantId, name: p.name })));
 
         const prompt = `Create a highly effective, personalized skincare routine (Morning & Evening) based on the user's specific analysis and goals.
         
@@ -502,9 +513,11 @@ app.post('/api/recommend-skin', async (req, res) => {
         });
 
         const recommendations = JSON.parse(response.text.trim());
+        console.log("- INFO: AI skin response parsed successfully");
 
         const hydrate = (list) => (list || []).map(p => {
-            const full = skincareCatalog.find(prod => prod.variantId === p.productId || prod.name === p.name);
+            // Check against full skin catalog instead of just the shortlisted one for robustness
+            const full = skinCatalog.find(prod => prod.variantId === p.productId || prod.name === p.name);
             if (!full) return null;
             return {
                 name: full.name,
@@ -543,14 +556,14 @@ app.post('/api/recommend-skin', async (req, res) => {
 app.post('/api/recommend-hair', async (req, res) => {
     try {
         const { analysis, profile, goals } = req.body;
-        const allProducts = await getAllProducts();
 
-        const hairCatalog = allProducts.filter(p => {
-            const lowerName = p.name.toLowerCase();
-            return ['hair', 'scalp', 'shampoo', 'conditioner', 'minoxidil', 'follihair', 'mintop', 'anaboom', 'oil', 'serum', 'tablet', 'capsule', 'solution'].some(term => lowerName.includes(term));
-        });
+        // REFACTORED: Use fast cached hair catalog
+        const hairCatalog = await getCatalogFast('hair');
 
-        console.log(`- INFO: hairCatalog size: ${hairCatalog.length} products`);
+        // REFACTORED: Shortlist catalog before sending to Gemini
+        const shortlisted = shortlistProductsForGemini(hairCatalog, { analysis, goals }, 30);
+
+        console.log(`- INFO: Using ${shortlisted.length} shortlisted hair products for AI.`);
 
         // const requiresDoctorConsultation = Object.values(profile || {}).some(v =>
         //     typeof v === 'string' && v.includes('Stage - 6')
@@ -567,7 +580,7 @@ app.post('/api/recommend-hair', async (req, res) => {
         - **PROFILE:** ${JSON.stringify(profile || {})}
         - **GOALS:** ${(goals || []).join(', ')}
 
-        **PRODUCT CATALOG:** ${JSON.stringify(hairCatalog.map(p => ({ id: p.variantId, name: p.name })))}
+        **PRODUCT CATALOG:** ${JSON.stringify(shortlisted.map(p => ({ id: p.variantId, name: p.name })))}
 
         **MEDICAL LOGIC:**
         1. Identify issues (e.g., Pattern Baldness, Dandruff, Damage).
@@ -1174,4 +1187,8 @@ app.listen(PORT, () => {
     console.log(`- POST /api/recommend-hair`);
     console.log(`- POST /api/doctor-report`);
     console.log(`- POST /api/chat`);
+
+    // REFACTORED: Startup Warming
+    console.log("- INFO: Warming up catalog cache...");
+    refreshCatalogInBackground().catch(e => console.error("- STARTUP SYNC ERR:", e.message));
 });
