@@ -810,19 +810,32 @@ app.post('/api/doctor-report', async (req, res) => {
         const summaryText = aiResponse.text.trim();
 
         // 2. Format Analysis HTML (like web)
-        const analysisHtml = (analysis || []).map(cat => `
-            <div class="category">
-                <h3>${cat.category}</h3>
-                <ul>
-                    ${(cat.conditions || []).map(c => `
-                        <li>
-                            <strong>${c.name}</strong> (${Math.round(c.confidence)}%) - ${c.location}
-                            ${c.description ? `<p style="margin: 4px 0; font-size: 12px; color: #666;">${c.description}</p>` : ''}
-                        </li>
-                    `).join('')}
-                </ul>
-            </div>
-        `).join('') || '<p>No specific conditions detected.</p>';
+        const hasImageAnalysisData = !!userImage || (analysis || []).some(
+            cat => !cat.category.toLowerCase().includes('self-reported')
+        );
+
+        let analysisSectionHtml = '';
+
+        if (hasImageAnalysisData && analysis && analysis.length > 0) {
+            const analysisHtml = analysis.map(cat => `
+                <div class="category">
+                    <h3>${cat.category}</h3>
+                    <ul>
+                        ${(cat.conditions || []).map(c => `
+                            <li>
+                                <strong>${c.name}</strong> (${Math.round(c.confidence)}%) - ${c.location}
+                                ${c.description ? `<p style="margin: 4px 0; font-size: 12px; color: #666;">${c.description}</p>` : ''}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `).join('');
+
+            analysisSectionHtml = `
+                <div class="section-title">AI ${isHairReport ? 'Hair' : 'Skin'} Analysis Findings</div>
+                <div>${analysisHtml}</div>
+            `;
+        }
 
         // 3. Helper to format tags into ingredients list (copied logic from pdfGenerator.ts)
         const allTags = Array.from(new Set((enrichedRecommendations || []).flatMap(r => (r.products || []).flatMap(p => p.tags || []))));
@@ -1053,8 +1066,7 @@ app.post('/api/doctor-report', async (req, res) => {
                 </div>
             </div>
 
-            <div class="section-title">AI ${isHairReport ? 'Hair' : 'Skin'} Analysis Findings</div>
-            <div>${analysisHtml}</div>
+            ${analysisSectionHtml}
 
 
 
