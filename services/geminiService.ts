@@ -122,3 +122,21 @@ export const getDoctorReport = async (
     }
 };
 
+// --- User Tracking ---
+export const trackUserSession = async (data: any): Promise<any> => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/user/track`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) {
+            console.warn('Backend tracking failed. This does not affect user experience.');
+            return null;
+        }
+        return await response.json();
+    } catch (error) {
+        console.error("Error in trackUserSession bridge:", error);
+        return null;
+    }
+};
