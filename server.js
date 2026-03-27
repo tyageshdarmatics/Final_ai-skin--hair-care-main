@@ -13,6 +13,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import mongoose from 'mongoose';
+import User from './models/User.js';
 
 // --- NEW SERVICE IMPORTS ---
 import { syncAllProductsFromShopify } from './services/shopifySyncService.js';
@@ -21,6 +23,15 @@ import { saveCatalogsToCache, getCachedCatalog } from './services/catalogCacheSe
 import { shortlistProductsForGemini } from './services/productShortlistService.js';
 
 dotenv.config();
+
+// Connect to MongoDB
+if (process.env.MONGO_URI) {
+    mongoose.connect(process.env.MONGO_URI)
+        .then(() => console.log('- INFO: Connected to MongoDB'))
+        .catch(err => console.error('- ERROR: MongoDB connection error:', err));
+} else {
+    console.warn('- WARNING: MONGO_URI missing from environment variables. Tracking will be disabled.');
+}
 
 const SchemaType = {
     STRING: 'string',
@@ -1168,6 +1179,52 @@ app.post('/api/doctor-report', async (req, res) => {
     } catch (error) {
         console.error("Error in /api/doctor-report:", error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Endpoint: /api/user/track
+ * Method: POST
+ * Body: { name, email, phone, age, interactionType, data }
+ * Description: Registers user or appends to history securely.
+ */
+app.post('/api/user/track', async (req, res) => {
+    try {
+        const { name, email, phone, age, interactionType, data } = req.body;
+
+        if (!email || !phone || !name) {
+            return res.status(400).json({ error: "Missing required fields: name, email, phone" });
+        }
+
+        // Search user by email and phone
+        let user = await User.findOne({ email, phone });
+
+        if (user) {
+            // Verify name match case-insensitively
+            if (user.name.toLowerCase() !== name.toLowerCase()) {
+                return res.status(400).json({ 
+                    error: "Validation failed: This email and phone number are already registered under a different name." 
+                });
+            }
+        } else {
+            // New User Registration
+            user = new User({ name, email, phone, age, history: [] });
+        }
+
+        // Add history interaction event
+        if (interactionType || data) {
+            user.history.push({
+                type: interactionType || 'general',
+                data: data || {}
+            });
+        }
+
+        await user.save();
+        res.status(200).json({ status: "success", userId: user._id });
+
+    } catch (error) {
+        console.error("Tracking Error (/api/user/track):", error);
+        res.status(500).json({ error: "Failed to track user session" });
     }
 });
 
