@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Sender, MessageType, ConversationStep, type Message, type SkinConditionCategory, type Goal, type ProductRecommendation, type HairQuestion, type Product, type HairProfileData, type UserInfo } from './types';
 import { CameraIcon, CheckCircleIcon, LoadingDots, UploadIcon, TrashIcon, CartIcon, AnalyzeIcon, GoalAcneIcon, GoalOilIcon, GoalTextureIcon, GoalPoresIcon, GoalToneIcon, GoalHydrationIcon, GoalAgingIcon, GoalRednessIcon, GoalBarrierIcon, GoalHealthyIcon, GoalNoneIcon, PlusIcon, AppIcon, UserIcon, BotIcon, DownloadIcon } from './components/icons';
-import { analyzeSkin, analyzeHair, getSkincareRoutine, getHairCareRoutine, chatWithAI } from './services/geminiService';
+import { analyzeSkin, analyzeHair, getSkincareRoutine, getHairCareRoutine, chatWithAI, trackUserSession } from './services/geminiService';
 import { generatePDF } from './utils/pdfGenerator';
 import { CameraCapture } from './components/CameraCapture';
 
@@ -755,6 +755,8 @@ const App: React.FC = () => {
     // Cart State
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+    const userInfoRef = useRef(userInfo);
+    useEffect(() => { userInfoRef.current = userInfo; }, [userInfo]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
 
@@ -1185,6 +1187,18 @@ const App: React.FC = () => {
 
         const response = await chatWithAI(query, context);
 
+        const currentProfile = userInfoRef.current;
+        if (currentProfile) {
+            trackUserSession({
+                name: currentProfile.name,
+                email: currentProfile.email,
+                phone: currentProfile.phone,
+                age: currentProfile.age,
+                interactionType: 'chat',
+                data: { query, response }
+            }).catch(e => console.error("Chat tracking error:", e));
+        }
+
         setMessages(prev => prev.filter(msg => msg.type !== MessageType.Loading));
         addMessage(Sender.Bot, MessageType.Text, response);
         addMessage(Sender.Bot, MessageType.ChatInput, null);
@@ -1193,6 +1207,16 @@ const App: React.FC = () => {
 
     const handleUserInfoSubmit = (info: UserInfo) => {
         setUserInfo(info);
+        
+        // Background DB tracking
+        trackUserSession({
+            name: info.name,
+            email: info.email,
+            phone: info.phone,
+            age: info.age,
+            interactionType: 'registration'
+        }).catch(err => console.error("Tracking registration error:", err));
+
         addMessage(Sender.User, MessageType.UserInfo, info);
         setTimeout(() => {
             addMessage(Sender.Bot, MessageType.Text, `Thank you, ${info.name.split(' ')[0]}! Now, please select a concern to begin.`);
