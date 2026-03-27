@@ -1,5 +1,5 @@
 {
-  "name": "ai-skin-and-hair-care",
+  "name": "ai-chatbot-with-apis",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "start": "node server.js",
-    "build:start": "vite build && node server.js",
+    "build:start": "vite build && node server.js && npm run start",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -16,6 +16,7 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "ioredis": "^5.4.1",
+    "mongoose": "^8.2.0",
     "node-fetch": "^3.3.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
