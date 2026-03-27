@@ -5,15 +5,24 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true },
     phone: { type: String, required: true },
     age: { type: Number },
-    // Array to hold sequential chat history and interactions over time
     history: [{
-        timestamp: { type: Date, default: Date.now },
-        type: { type: String }, // 'chat', 'skin_analysis', 'hair_analysis', 'recommendation', etc.
-        data: { type: mongoose.Schema.Types.Mixed }
-    }]
+        sessionId: { type: String, required: true },
+        hairProfileData: { type: mongoose.Schema.Types.Mixed },
+        analysisResult: [{ type: mongoose.Schema.Types.Mixed }],
+        haircareGoals: [{ type: String }],
+        recommendation: { type: mongoose.Schema.Types.Mixed },
+        routineTitle: { type: String },
+        chatHistory: [{
+            id: { type: String },
+            sender: { type: String },
+            text: { type: String }
+        }],
+        date: { type: Date, default: Date.now },
+        lastUpdated: { type: Date, default: Date.now }
+    }],
+    lastActiveAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
-// Compound index to quickly find user by email and phone
 userSchema.index({ email: 1, phone: 1 }, { unique: true });
 
 const User = mongoose.model('User', userSchema);
