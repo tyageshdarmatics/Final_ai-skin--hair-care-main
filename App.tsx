@@ -757,6 +757,10 @@ const App: React.FC = () => {
     const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
     const userInfoRef = useRef(userInfo);
     useEffect(() => { userInfoRef.current = userInfo; }, [userInfo]);
+
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const sessionIdRef = useRef(sessionId);
+    useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
 
@@ -883,6 +887,18 @@ const App: React.FC = () => {
         const result = await analyzeSkin(uploadedImages.map(img => img.base64));
         setSkinAnalysisResult(result);
 
+        // Track Analysis Result
+        const currentProfile = userInfoRef.current;
+        const currentSession = sessionIdRef.current;
+        if (currentProfile && currentSession) {
+            trackUserSession({
+                name: currentProfile.name, email: currentProfile.email,
+                phone: currentProfile.phone, age: currentProfile.age,
+                sessionId: currentSession, action: 'update_analysis',
+                data: { analysisResult: result }
+            }).catch(e => console.error("Analysis tracking error:", e));
+        }
+
         setMessages(prev => prev.filter(msg => msg.type !== MessageType.Loading));
 
         setMessages(prev => prev.map(msg =>
@@ -904,6 +920,18 @@ const App: React.FC = () => {
 
         const result = response.analysis || [];
         setSkinAnalysisResult(result);
+
+        // Track Analysis Result
+        const currentProfile = userInfoRef.current;
+        const currentSession = sessionIdRef.current;
+        if (currentProfile && currentSession) {
+            trackUserSession({
+                name: currentProfile.name, email: currentProfile.email,
+                phone: currentProfile.phone, age: currentProfile.age,
+                sessionId: currentSession, action: 'update_analysis',
+                data: { analysisResult: result }
+            }).catch(e => console.error("Analysis tracking error:", e));
+        }
 
         setMessages(prev => prev.filter(msg => msg.type !== MessageType.Loading));
 
@@ -1020,6 +1048,19 @@ const App: React.FC = () => {
                 setConversationState(s => ({ ...s, skinGoals: payload.goals }));
                 addMessage(Sender.Bot, MessageType.Loading, `Generating your personalized ${conversationStateRef.current.assessmentType === 'hair' ? 'haircare' : 'skincare'}...`);
                 const recs = await getSkincareRoutine(skinAnalysisResult!, payload.goals);
+                
+                // Track Recommendation
+                const currentProfileSkin = userInfoRef.current;
+                const currentSessionSkin = sessionIdRef.current;
+                if (currentProfileSkin && currentSessionSkin) {
+                    trackUserSession({
+                        name: currentProfileSkin.name, email: currentProfileSkin.email,
+                        phone: currentProfileSkin.phone, age: currentProfileSkin.age,
+                        sessionId: currentSessionSkin, action: 'update_recommendation',
+                        data: { recommendation: recs, haircareGoals: payload.goals }
+                    }).catch(e => console.error("Rec tracking error:", e));
+                }
+
                 setMessages(prev => prev.filter(msg => msg.type !== MessageType.Loading));
                 addMessage(Sender.Bot, MessageType.ProductRecommendation, recs);
                 break;
@@ -1041,6 +1082,19 @@ const App: React.FC = () => {
                 };
 
                 const hairRecs = await getHairCareRoutine(hairProfile, skinAnalysisResult || [], []);
+                
+                // Track Recommendation
+                const currentProfileHair = userInfoRef.current;
+                const currentSessionHair = sessionIdRef.current;
+                if (currentProfileHair && currentSessionHair) {
+                    trackUserSession({
+                        name: currentProfileHair.name, email: currentProfileHair.email,
+                        phone: currentProfileHair.phone, age: currentProfileHair.age,
+                        sessionId: currentSessionHair, action: 'update_recommendation',
+                        data: { recommendation: hairRecs }
+                    }).catch(e => console.error("Rec tracking error:", e));
+                }
+
                 setMessages(prev => prev.filter(msg => msg.type !== MessageType.Loading));
 
                 if (hairRecs.length === 0) {
@@ -1188,14 +1242,28 @@ const App: React.FC = () => {
         const response = await chatWithAI(query, context);
 
         const currentProfile = userInfoRef.current;
-        if (currentProfile) {
+        const currentSession = sessionIdRef.current;
+        if (currentProfile && currentSession) {
+            // Track User Message
             trackUserSession({
                 name: currentProfile.name,
                 email: currentProfile.email,
                 phone: currentProfile.phone,
                 age: currentProfile.age,
-                interactionType: 'chat',
-                data: { query, response }
+                sessionId: currentSession,
+                action: 'add_chat',
+                data: { chatMessage: { id: Date.now().toString() + "_u", sender: "user", text: query } }
+            }).catch(e => console.error("Chat tracking error:", e));
+            
+            // Track AI Message
+            trackUserSession({
+                name: currentProfile.name,
+                email: currentProfile.email,
+                phone: currentProfile.phone,
+                age: currentProfile.age,
+                sessionId: currentSession,
+                action: 'add_chat',
+                data: { chatMessage: { id: Date.now().toString() + "_ai", sender: "ai", text: response } }
             }).catch(e => console.error("Chat tracking error:", e));
         }
 
@@ -1208,13 +1276,18 @@ const App: React.FC = () => {
     const handleUserInfoSubmit = (info: UserInfo) => {
         setUserInfo(info);
         
-        // Background DB tracking
+        const newSessionId = Date.now().toString();
+        setSessionId(newSessionId);
+
+        // Background DB tracking - init session
         trackUserSession({
             name: info.name,
             email: info.email,
             phone: info.phone,
             age: info.age,
-            interactionType: 'registration'
+            sessionId: newSessionId,
+            action: 'init_session',
+            data: { hairProfileData: info }
         }).catch(err => console.error("Tracking registration error:", err));
 
         addMessage(Sender.User, MessageType.UserInfo, info);
