@@ -243,15 +243,19 @@ app.post('/api/analyze-skin', async (req, res) => {
         - Normal facial hair, beard, mustache, stubble.
         - Do NOT tag "Facial Hair" or "Stubble" as a skin condition unless it is specifically folliculitis or ingrown hairs.
         
-        **For EACH condition you find:**
+        **Condition Extraction & Grouping (CRITICAL):**
+        - Do NOT create duplicate condition entries! Group identical conditions found in the same location into a single JSON object.
+        - For example: If you find 5 acne papules on the "Right Mid-Cheek", create ONLY ONE condition object named "Inflamed Acne Papule" for that location. Place ALL 5 bounding boxes inside that single object's 'boundingBoxes' array.
+        
+        **For EACH unique condition in a specific location:**
         1. Create a descriptive name (e.g., "Acne Pustules", "Deep Forehead Wrinkles", "Dark Spots on Cheeks")
         2. Rate confidence 0-100 (how sure are you)
         3. Specify exact location (Forehead, Left Cheek, Right Cheek, Nose, Chin, Under Eyes, Temple, Jaw, etc.)
         4. MANDATORY: A very short, one-sentence description of the problem.
-        5. MANDATORY: Draw a bounding box around EVERY visible instance using normalized coordinates (0.0-1.0)
+        5. MANDATORY: Add bounding boxes for EVERY visible instance of this condition to the 'boundingBoxes' array using normalized coordinates (0.0-1.0):
            - x1, y1 = top-left corner
            - x2, y2 = bottom-right corner
-           - Example: if acne is on left cheek, draw box around that area
+           - Example: if acne is on left cheek, draw box around that area, if 5 acne papules are on the left cheek, the 'boundingBoxes' array MUST contain 5 separate boxes.
         
         **Grouping Strategy:**
         - Group similar conditions into categories (e.g., "Acne & Blemishes", "Signs of Aging", "Pigmentation Issues", "Texture & Pores")
@@ -305,7 +309,32 @@ app.post('/api/analyze-skin', async (req, res) => {
             }
         });
 
-        const result = response.text ? JSON.parse(response.text.trim()) : [];
+        let result = response.text ? JSON.parse(response.text.trim()) : [];
+
+        // Deduplicate conditions to ensure no duplicate entries are sent to frontend
+        if (Array.isArray(result)) {
+            result = result.map(categoryItem => {
+                if (!categoryItem.conditions) return categoryItem;
+
+                const conditionMap = new Map();
+                categoryItem.conditions.forEach(cond => {
+                    const key = `${cond.name}_${cond.location}`.toLowerCase();
+                    if (conditionMap.has(key)) {
+                        const existing = conditionMap.get(key);
+                        if (cond.boundingBoxes) {
+                            existing.boundingBoxes.push(...cond.boundingBoxes);
+                        }
+                    } else {
+                        conditionMap.set(key, { ...cond, boundingBoxes: cond.boundingBoxes ? [...cond.boundingBoxes] : [] });
+                    }
+                });
+                return {
+                    ...categoryItem,
+                    conditions: Array.from(conditionMap.values())
+                };
+            });
+        }
+
         res.json(result);
 
     } catch (error) {
