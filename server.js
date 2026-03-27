@@ -1185,15 +1185,15 @@ app.post('/api/doctor-report', async (req, res) => {
 /**
  * Endpoint: /api/user/track
  * Method: POST
- * Body: { name, email, phone, age, interactionType, data }
+ * Body: { name, email, phone, age, sessionId, action, data }
  * Description: Registers user or appends to history securely.
  */
 app.post('/api/user/track', async (req, res) => {
     try {
-        const { name, email, phone, age, interactionType, data } = req.body;
+        const { name, email, phone, age, sessionId, action, data } = req.body;
 
-        if (!email || !phone || !name) {
-            return res.status(400).json({ error: "Missing required fields: name, email, phone" });
+        if (!email || !phone || !name || !sessionId) {
+            return res.status(400).json({ error: "Missing required fields: name, email, phone, sessionId" });
         }
 
         // Search user by email and phone
@@ -1211,13 +1211,33 @@ app.post('/api/user/track', async (req, res) => {
             user = new User({ name, email, phone, age, history: [] });
         }
 
-        // Add history interaction event
-        if (interactionType || data) {
-            user.history.push({
-                type: interactionType || 'general',
-                data: data || {}
-            });
+        user.lastActiveAt = new Date();
+
+        let session = user.history.find(s => s.sessionId === sessionId);
+        if (!session) {
+            session = { sessionId, chatHistory: [] };
+            user.history.push(session);
+            session = user.history[user.history.length - 1]; // Get reference
         }
+
+        if (action === 'init_session') {
+            if (data?.hairProfileData) session.hairProfileData = data.hairProfileData;
+        } else if (action === 'update_analysis') {
+            if (data?.analysisResult) session.analysisResult = data.analysisResult;
+            if (data?.haircareGoals) session.haircareGoals = data.haircareGoals;
+        } else if (action === 'update_recommendation') {
+            if (data?.recommendation) session.recommendation = data.recommendation;
+            session.routineTitle = "Your Plan";
+        } else if (action === 'add_chat') {
+            if (data?.chatMessage) {
+                // Ensure we don't accidentally push duplicates if React strict mode double fires
+                const exists = session.chatHistory.some(c => c.id === data.chatMessage.id);
+                if (!exists) session.chatHistory.push(data.chatMessage);
+            }
+        }
+
+        session.lastUpdated = new Date();
+        user.markModified('history');
 
         await user.save();
         res.status(200).json({ status: "success", userId: user._id });
